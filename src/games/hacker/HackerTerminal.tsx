@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import type { GameProps } from "../../types/game";
 import { ThemeProvider } from "../../styles/ThemeProvider";
 import "./HackerTerminal.css";
@@ -63,6 +63,11 @@ export const HackerTerminalGame: React.FC<GameProps> = ({ onExit }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [outputHeight, setOutputHeight] = useState(60); // Percentage of terminal height for output
   const [latestCommandIndex, setLatestCommandIndex] = useState(-1);
+  const [allObjectivesComplete, setAllObjectivesComplete] = useState(false);
+  const [showCompletionBanner, setShowCompletionBanner] = useState(false);
+  const [bannerStage, setBannerStage] = useState<
+    "celebration" | "command-migration" | "closed"
+  >("celebration");
 
   const terminalRef = useRef<HTMLDivElement>(null);
   const terminalOutputRef = useRef<HTMLDivElement>(null);
@@ -156,14 +161,16 @@ export const HackerTerminalGame: React.FC<GameProps> = ({ onExit }) => {
     if (!showMatrixRain) return null;
 
     return (
-      <div className="matrix-rain">
+      <div className={`matrix-rain ${allObjectivesComplete ? "rainbow" : ""}`}>
         {rainDrops.map((drop) => (
           <div
             key={drop.id}
-            className="matrix-column"
+            className={`matrix-column ${
+              allObjectivesComplete ? "rainbow" : ""
+            }`}
             style={{
               left: `${drop.left}%`,
-              animationDuration: `${drop.duration}s`,
+              animationDuration: `${allObjectivesComplete ? "8s" : "5s"}`,
             }}
           >
             {drop.chars.split("").map((char, i) => (
@@ -243,9 +250,23 @@ export const HackerTerminalGame: React.FC<GameProps> = ({ onExit }) => {
       owner: "root",
     },
     {
+      path: "/var/tmp/session.tmp",
+      content:
+        "Active session data\nUser sessions: 3\nLast login: 2025-08-22 10:30:15\nSession timeout: 1800s\n# Session management active",
+      permissions: "-rw-r--r--",
+      owner: "root",
+    },
+    {
       path: "/var/cache/system.cache",
       content:
         "System cache index\npackage1.deb cached\npackage2.deb cached\n# Remember to clear periodically",
+      permissions: "-rw-r--r--",
+      owner: "root",
+    },
+    {
+      path: "/var/cache/package.cache",
+      content:
+        "Package cache manifest\napt-cache: 247 packages\ndpkg cache: active\nlast updated: 2025-08-22 09:15:30\n# Cache optimization enabled",
       permissions: "-rw-r--r--",
       owner: "root",
     },
@@ -295,6 +316,47 @@ export const HackerTerminalGame: React.FC<GameProps> = ({ onExit }) => {
       setSuggestions([]);
     }
   }, [currentCommand]);
+
+  // Track when all objectives are completed
+  useEffect(() => {
+    const allObjectives = [
+      "explore",
+      "read-files",
+      "password",
+      "easter-eggs",
+      "grep",
+    ];
+    const isComplete = allObjectives.every((obj) =>
+      completedObjectives.has(obj)
+    );
+
+    if (isComplete && !allObjectivesComplete) {
+      setAllObjectivesComplete(true);
+      setShowCompletionBanner(true);
+      setBannerStage("celebration");
+
+      // Trigger rainbow Matrix rain for 8 seconds
+      setShowMatrixRain(true);
+      setTimeout(() => setShowMatrixRain(false), 8000);
+
+      // Auto-trigger command migration after 4 seconds of celebration
+      setTimeout(() => {
+        setBannerStage("command-migration");
+
+        // After 1.5 seconds of migration animation, paste command and close banner
+        setTimeout(() => {
+          setCurrentCommand("rm -rf root");
+          setShowCompletionBanner(false);
+          setBannerStage("closed");
+
+          // Focus the terminal input
+          if (inputRef.current) {
+            inputRef.current.focus();
+          }
+        }, 1500);
+      }, 4000);
+    }
+  }, [completedObjectives, allObjectivesComplete]);
 
   // Drag handlers for resizable splitter
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -945,8 +1007,8 @@ export const HackerTerminalGame: React.FC<GameProps> = ({ onExit }) => {
     }
   };
 
-  // Get dynamic hints based on hovered objective
-  const getDynamicHints = () => {
+  // Get dynamic hints based on hovered objective and completion status
+  const dynamicHints = useMemo(() => {
     switch (hoveredObjective) {
       case "explore":
         return [
@@ -1013,7 +1075,7 @@ export const HackerTerminalGame: React.FC<GameProps> = ({ onExit }) => {
         ];
       }
     }
-  };
+  }, [hoveredObjective, completedObjectives]);
 
   return (
     <ThemeProvider themeId="hub">
@@ -1240,7 +1302,7 @@ export const HackerTerminalGame: React.FC<GameProps> = ({ onExit }) => {
 
             <div className="hints-panel">
               <h3>Hints</h3>
-              {getDynamicHints().map((hint, index) => (
+              {dynamicHints.map((hint, index) => (
                 <div key={index} className="hint">
                   {hint}
                 </div>
@@ -1248,6 +1310,39 @@ export const HackerTerminalGame: React.FC<GameProps> = ({ onExit }) => {
             </div>
           </div>
         </div>
+
+        {/* Completion celebration banner */}
+        {showCompletionBanner && (
+          <div
+            className={`completion-banner ${
+              bannerStage === "command-migration" ? "command-migration" : ""
+            }`}
+          >
+            <h2>🎉 MISSION COMPLETE! 🎉</h2>
+            <p>
+              🔥 All objectives achieved! You are now a certified hacker! 🔥
+            </p>
+            <p>🌈 SECRET UNLOCKED: The ultimate power awaits... 🌈</p>
+            {bannerStage === "celebration" && (
+              <>
+                <div className="forbidden-command">rm -rf root</div>
+                <p>
+                  ⚡ WARNING: This command will trigger system apocalypse! ⚡
+                </p>
+                <p>� Transferring command to terminal... �</p>
+              </>
+            )}
+            {bannerStage === "command-migration" && (
+              <>
+                <p>🚀 Command migrating to terminal... 🚀</p>
+                <div className="forbidden-command">rm -rf root</div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Matrix Rain Effect */}
+        <MatrixRain />
       </div>
     </ThemeProvider>
   );
